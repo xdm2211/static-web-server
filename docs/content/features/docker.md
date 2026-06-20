@@ -18,14 +18,20 @@ All Docker images are [Multi-Arch](https://www.docker.com/blog/how-to-rapidly-bu
 - `linux/ppc64le` (Debian only)
 - `linux/s390x` (Debian only)
 
-!!! tip "SWS statically-linked binary"
-    All the Docker images use the SWS statically-linked binary, meaning that the binary is highly optimized, performant, and dependency-free thanks to [musl libc](https://www.musl-libc.org/).
+!!! tip "`Scratch` and `Alpine` images use statically-linked binaries"
+
+    `Scratch` and `Alpine` based Docker images use a statically-linked binary that is portable, performant and dependency-free thanks to [musl libc](https://www.musl-libc.org/), keeping containers as lean as possible.
+
+!!! tip "`Debian` images use dynamically-linked binaries"
+
+    `Debian` based Docker images use SWS dynamically-linked binaries, making containers highly optimized, performant and resource-efficient.
 
 ## Rootless
 
 The **Debian** and **Alpine** Docker images are rootless **by default** using a dedicated `sws` user and group. This reduces the attack surface and improves security.
 
 !!! info "Remember"
+
     Users can still run the containers as root if they _explicitly_ set the user to _root_ when running the container, e.g., using the `--user root` flag with `docker run`.
 
 The `static-web-server` binary and all files under `/home/sws` (home directory) are owned by the non-root `sws` user and group.
@@ -43,6 +49,7 @@ The current working directory is the _home directory_ by default.
 To give the server a quick try just run the following commands.
 
 !!! tip "Tips"
+
     - [The SWS CLI arguments](../configuration/command-line-arguments.md) can be provided directly to the container or omitted as shown below.
     - A Docker volume like `-v $HOME/my-public-dir:/public` can be specified to overwrite the default root directory.
 
@@ -70,6 +77,49 @@ docker run --rm -it -p 8787:80 ghcr.io/static-web-server/static-web-server:2-alp
 docker run --rm -it -p 8787:80 joseluisq/static-web-server:2-debian -g info
 # or
 docker run --rm -it -p 8787:80 ghcr.io/static-web-server/static-web-server:2-debian -g info
+```
+
+### FIPS-validated TLS
+
+For deployments that require **FIPS 140-validated cryptography** (US federal, regulated industries), there are a few Docker image variants available with [FIPS-validated TLS](./http2-tls.md#fips-validated-cryptography) via the `http2-fips` feature.
+FIPS images use [`aws-lc-rs`](https://github.com/aws/aws-lc-rs) in FIPS mode instead of `ring` as the TLS crypto provider.
+
+Platforms supported by FIPS images are `linux/amd64` and `linux/arm64` only.
+
+!!! tip "Verify FIPS mode"
+
+    To verify that the image supports FIPS mode, check the output of the following command:
+
+    ```sh
+    docker run --rm ghcr.io/static-web-server/static-web-server:2-fips -V | grep -i "fips"
+    # FIPS Mode:
+    #   Module Version:   AWS-LC-FIPS 3.0.x
+    #   Crypto Provider:  aws-lc-rs (via aws-lc-fips-sys)
+    ```
+
+**Scratch**
+
+```sh
+# Scratch (just the binary)
+docker run --rm -it -p 8787:80 joseluisq/static-web-server:2-fips -g info
+# or
+docker run --rm -it -p 8787:80 ghcr.io/static-web-server/static-web-server:2-fips -g info
+```
+
+**Alpine**
+
+```sh
+docker run --rm -it -p 8787:80 joseluisq/static-web-server:2-fips-alpine -g info
+# or
+docker run --rm -it -p 8787:80 ghcr.io/static-web-server/static-web-server:2-fips-alpine -g info
+```
+
+**Debian**
+
+```sh
+docker run --rm -it -p 8787:80 joseluisq/static-web-server:2-fips-debian -g info
+# or
+docker run --rm -it -p 8787:80 ghcr.io/static-web-server/static-web-server:2-fips-debian -g info
 ```
 
 ### Development
@@ -218,4 +268,5 @@ spec:
 ```
 
 ### TrueCharts
+
 The [TrueCharts Community](https://truecharts.org) also provides a ready-to-use [Static Web Server Helm-Chart](https://truecharts.org/charts/stable/static-web-server/) that you can easily deploy in your Kubernetes.

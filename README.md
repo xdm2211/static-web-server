@@ -5,13 +5,13 @@
     /></a>
   </div>
 
-  <h1 align="center">Static Web Server</h1>
+<h1 align="center">Static Web Server</h1>
 
-  <h4 align="center">
+<h4 align="center">
     A cross-platform, high-performance and asynchronous web server for static files-serving ⚡
   </h4>
 
-  <div align="center">
+<div align="center">
     <a href="https://github.com/static-web-server/static-web-server/actions/workflows/devel.yml" title="devel ci"><img src="https://github.com/static-web-server/static-web-server/actions/workflows/devel.yml/badge.svg?branch=master"></a> 
     <a href="https://hub.docker.com/r/joseluisq/static-web-server/" title="Docker Image Version (tag latest semver)"><img src="https://img.shields.io/docker/v/joseluisq/static-web-server/2"></a> 
     <a href="https://hub.docker.com/r/joseluisq/static-web-server/tags" title="Docker Image Size (tag)"><img src="https://img.shields.io/docker/image-size/joseluisq/static-web-server/2"></a> 
@@ -26,6 +26,9 @@
 </div>
 
 ## Overview
+
+> [!NOTE]
+> This is the upcoming **v3**, still in development. For **production** use, check out the **[v2 (LTS)](https://github.com/static-web-server/static-web-server/tree/2.x)**.
 
 **Static Web Server** (or **`SWS`** abbreviated) is a tiny and fast production-ready web server suitable to serve static web files or assets.
 
@@ -59,11 +62,12 @@ Cross-platform and available for `Linux`, `macOS`, `Windows`, `FreeBSD`, `NetBSD
 - Basic HTTP Authentication.
 - Customizable HTTP response headers for specific file requests via glob patterns.
 - Fallback pages for 404 errors, useful for Single-page applications.
-- Run the server as a [Windows Service](https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2003/cc783643(v=ws.10)).
+- Run the server as a [Windows Service](<https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2003/cc783643(v=ws.10)>).
 - Configurable using CLI arguments, environment variables or a TOML file.
 - Default and custom error pages.
 - Built-in HTTP to HTTPS redirect.
 - GET/HEAD Health check endpoint.
+- [Prometheus metrics endpoint](https://static-web-server.net/features/metrics/) for HTTP request counts, latency histograms, and connection tracking.
 - Support for serving pre-compressed (Gzip/Brotli/Zstd) files directly from disk.
 - Custom URL rewrites and redirects via glob patterns with replacements.
 - Virtual hosting support.
@@ -89,11 +93,6 @@ Please refer to [The Documentation Website](https://static-web-server.net/) for 
 <img title="SWS - Benchmarks April 2023" src="https://raw.githubusercontent.com/static-web-server/benchmarks/master/data/2023-04/benchmark-2023-04.png" width="860">
 
 For more details see [benchmarks repository](https://github.com/static-web-server/benchmarks)
-
-## Notes
-
-- If you're looking for `v1` please go to [1.x](https://github.com/static-web-server/static-web-server/tree/1.x) branch.
-- If you want to migrate from `v1` to `v2` please view [Migrating from `v1` to `v2`](https://static-web-server.net/migration/) release.
 
 ## Contributions
 

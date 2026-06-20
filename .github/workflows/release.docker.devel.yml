@@ -16,7 +16,7 @@ env:
 
 jobs:
   build-release:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     env:
       CARGO_BIN: cargo
       # Emit backtraces on panics.
@@ -36,6 +36,10 @@ jobs:
           arch: linux/amd64
           rust: stable
           target: x86_64-unknown-linux-musl
+        - build: linux-gnu
+          arch: linux/amd64
+          rust: stable
+          target: x86_64-unknown-linux-gnu
 
     outputs:
       target: ${{ steps.target.outputs.target }}
@@ -89,8 +93,8 @@ jobs:
   # If multiple targets are needed then refactor the workflow and the 'devel' Dockerfile to be Docker Multiarch.
   docker-image:
     needs: ['build-release']
-    runs-on: ubuntu-22.04
-    permissions: 
+    runs-on: ubuntu-24.04
+    permissions:
       contents: read
       packages: write
     strategy:
@@ -118,7 +122,8 @@ jobs:
           path: ${{ env.TARGET_DIR }}/${{ matrix.target }}/release
           key: cache-${{ github.sha }}-${{ matrix.target }}
       - name: Copy binary
-        run: cp ${{ env.TARGET_DIR }}/${{ matrix.target }}/release/static-web-server ./docker/devel/
+        run: |
+            cp ${{ env.TARGET_DIR }}/${{ matrix.target }}/release/static-web-server ./docker/devel/
 
       - name: Login to ghcr.io
         uses: docker/login-action@v3

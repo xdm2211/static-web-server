@@ -6,23 +6,28 @@
 //! The module handles requests over TLS via [Rustls](tokio_rustls::rustls).
 //!
 
+// Ensure exactly one TLS crypto provider is enabled.
+#[cfg(all(feature = "tls-ring", feature = "tls-fips"))]
+compile_error!("Only one TLS crypto provider may be enabled. Choose one of: tls-ring, tls-fips");
+
+#[cfg(not(any(feature = "tls-ring", feature = "tls-fips")))]
+compile_error!("tls requires a crypto provider: enable tls-ring or tls-fips");
+
 // Most of the file is borrowed from https://github.com/seanmonstar/warp/blob/master/src/tls.rs
 
 use futures_util::ready;
-use hyper::server::accept::Accept;
-use hyper::server::conn::{AddrIncoming, AddrStream};
+use rustls_pki_types::pem::PemObject;
+use rustls_pki_types::{CertificateDer, PrivateKeyDer};
 use std::fs::File;
 use std::future::Future;
 use std::io::{self, BufReader, Cursor, Read};
-use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio_rustls::rustls::{Error as TlsError, ServerConfig, pki_types::PrivateKeyDer};
-
-use crate::transport::Transport;
+use tokio::net::TcpStream;
+use tokio_rustls::rustls::{Error as TlsError, ServerConfig};
 
 /// Represents errors that can occur building the TlsConfig
 #[derive(Debug)]
@@ -39,17 +44,31 @@ pub enum TlsConfigError {
     UnknownPrivateKeyFormat,
     /// An error from an invalid key
     InvalidKey(TlsError),
+    /// Illegal section start in PEM
+    IllegalSectionStart(Vec<u8>),
+    /// Illegal section end in PEM
+    IllegalSectionEnd(Vec<u8>),
 }
 
 impl std::fmt::Display for TlsConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TlsConfigError::Io(err) => err.fmt(f),
-            TlsConfigError::CertParseError => write!(f, "certificate parse error"),
-            TlsConfigError::InvalidIdentityPem => write!(f, "identity PEM is invalid"),
-            TlsConfigError::UnknownPrivateKeyFormat => write!(f, "unknown private key format"),
-            TlsConfigError::EmptyKey => write!(f, "key contains no private key"),
-            TlsConfigError::InvalidKey(err) => write!(f, "key contains an invalid key, {err}"),
+            TlsConfigError::CertParseError => write!(f, "failed to parse certificate"),
+            TlsConfigError::InvalidIdentityPem => write!(f, "the identity PEM provided is invalid"),
+            TlsConfigError::UnknownPrivateKeyFormat => {
+                write!(f, "the private key format is unknown")
+            }
+            TlsConfigError::EmptyKey => write!(f, "the key provided is probably missing or empty"),
+            TlsConfigError::InvalidKey(err) => write!(f, "the key provided is invalid, {err}"),
+            TlsConfigError::IllegalSectionStart(line) => {
+                let line = String::from_utf8(line.clone()).unwrap_or_default();
+                write!(f, "illegal section start in PEM at '{line}'")
+            }
+            TlsConfigError::IllegalSectionEnd(end_marker) => {
+                let end_marker = String::from_utf8(end_marker.clone()).unwrap_or_default();
+                write!(f, "illegal section end in PEM at '{end_marker}'")
+            }
         }
     }
 }
@@ -110,7 +129,7 @@ impl TlsConfigBuilder {
     /// Builds TLS configuration.
     pub fn build(mut self) -> Result<ServerConfig, TlsConfigError> {
         let mut cert_rdr = BufReader::new(self.cert);
-        let cert = rustls_pemfile::certs(&mut cert_rdr)
+        let cert = CertificateDer::pem_reader_iter(&mut cert_rdr)
             .collect::<Result<Vec<_>, _>>()
             .map_err(|_e| TlsConfigError::CertParseError)?;
 
@@ -124,25 +143,21 @@ impl TlsConfigBuilder {
             return Err(TlsConfigError::EmptyKey);
         }
 
-        let mut key: Option<PrivateKeyDer<'_>> = None;
-        let mut reader = Cursor::new(key_buf);
-        for item in std::iter::from_fn(|| rustls_pemfile::read_one(&mut reader).transpose()) {
-            match item.map_err(|_e| TlsConfigError::InvalidIdentityPem)? {
-                // rsa pkcs1 key
-                rustls_pemfile::Item::Pkcs1Key(k) => key = Some(k.into()),
-                // pkcs8 key
-                rustls_pemfile::Item::Pkcs8Key(k) => key = Some(k.into()),
-                // sec1 ec key
-                rustls_pemfile::Item::Sec1Key(k) => key = Some(k.into()),
-                // unknown format
-                _ => return Err(TlsConfigError::UnknownPrivateKeyFormat),
+        let reader = Cursor::new(key_buf);
+        let key = PrivateKeyDer::from_pem_reader(reader).map_err(|err| match err {
+            rustls_pki_types::pem::Error::Base64Decode(_) => TlsConfigError::InvalidIdentityPem,
+            rustls_pki_types::pem::Error::NoItemsFound => TlsConfigError::EmptyKey,
+            rustls_pki_types::pem::Error::IllegalSectionStart { line } => {
+                TlsConfigError::IllegalSectionStart(line)
             }
-        }
-
-        let key = match key {
-            Some(k) => k,
-            _ => return Err(TlsConfigError::EmptyKey),
-        };
+            rustls_pki_types::pem::Error::MissingSectionEnd { end_marker } => {
+                TlsConfigError::IllegalSectionEnd(end_marker)
+            }
+            rustls_pki_types::pem::Error::Io(err) => {
+                TlsConfigError::Io(io::Error::new(io::ErrorKind::InvalidData, err))
+            }
+            _ => TlsConfigError::InvalidIdentityPem,
+        })?;
 
         let mut config = ServerConfig::builder()
             .with_no_client_auth()
@@ -170,7 +185,10 @@ impl LazyFile {
             self.file = Some(File::open(&self.path)?);
         }
 
-        self.file.as_mut().unwrap().read(buf)
+        match self.file.as_mut() {
+            Some(file) => file.read(buf),
+            None => Err(io::Error::other("file handle unavailable after open")),
+        }
     }
 }
 
@@ -186,15 +204,10 @@ impl Read for LazyFile {
     }
 }
 
-impl Transport for TlsStream {
-    fn remote_addr(&self) -> Option<SocketAddr> {
-        Some(self.remote_addr)
-    }
-}
-
+/// State of the TLS stream, either handshaking or streaming.
 enum State {
-    Handshaking(tokio_rustls::Accept<AddrStream>),
-    Streaming(tokio_rustls::server::TlsStream<AddrStream>),
+    Handshaking(tokio_rustls::Accept<TcpStream>),
+    Streaming(tokio_rustls::server::TlsStream<TcpStream>),
 }
 
 /// TlsStream implements AsyncRead/AsyncWrite handshaking tokio_rustls::Accept first.
@@ -203,16 +216,13 @@ enum State {
 /// so we have to TlsAcceptor::accept and handshake to have access to it.
 pub struct TlsStream {
     state: State,
-    remote_addr: SocketAddr,
 }
 
 impl TlsStream {
-    fn new(stream: AddrStream, config: Arc<ServerConfig>) -> TlsStream {
-        let remote_addr = stream.remote_addr();
+    fn new(stream: TcpStream, config: Arc<ServerConfig>) -> TlsStream {
         let accept = tokio_rustls::TlsAcceptor::from(config).accept(stream);
         TlsStream {
             state: State::Handshaking(accept),
-            remote_addr,
         }
     }
 }
@@ -274,35 +284,26 @@ impl AsyncWrite for TlsStream {
 }
 
 /// Type to intercept Tls incoming connections.
+#[derive(Clone)]
 pub struct TlsAcceptor {
     config: Arc<ServerConfig>,
-    incoming: AddrIncoming,
 }
 
 impl TlsAcceptor {
-    /// Creates a new Tls interceptor.
-    pub fn new(config: ServerConfig, incoming: AddrIncoming) -> TlsAcceptor {
+    /// Creates a new Tls interceptor from a built [`ServerConfig`].
+    pub fn new(config: ServerConfig) -> TlsAcceptor {
         TlsAcceptor {
             config: Arc::new(config),
-            incoming,
         }
     }
-}
 
-impl Accept for TlsAcceptor {
-    type Conn = TlsStream;
-    type Error = io::Error;
-
-    fn poll_accept(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Self::Conn, Self::Error>>> {
-        let pin = self.get_mut();
-        match ready!(Pin::new(&mut pin.incoming).poll_accept(cx)) {
-            Some(Ok(sock)) => Poll::Ready(Some(Ok(TlsStream::new(sock, pin.config.clone())))),
-            Some(Err(e)) => Poll::Ready(Some(Err(e))),
-            None => Poll::Ready(None),
-        }
+    /// Wraps an accepted [`TcpStream`] in a [`TlsStream`].
+    ///
+    /// The TLS handshake is driven lazily inside the returned stream's
+    /// [`AsyncRead`] / [`AsyncWrite`] implementations, so this method
+    /// returns immediately.
+    pub async fn accept(&self, stream: TcpStream) -> io::Result<TlsStream> {
+        Ok(TlsStream::new(stream, self.config.clone()))
     }
 }
 
@@ -371,5 +372,68 @@ mod tests {
             .cert(cert.as_bytes())
             .build()
             .unwrap();
+    }
+
+    #[test]
+    fn missing_cert_path_returns_io_error() {
+        let err = TlsConfigBuilder::new()
+            .cert_path("tests/tls/nonexistent_cert.pem")
+            .key_path("tests/tls/local.dev_key.pkcs8.pem")
+            .build()
+            .unwrap_err();
+        assert!(
+            matches!(err, TlsConfigError::CertParseError | TlsConfigError::Io(_)),
+            "expected Io or CertParseError, got: {err}"
+        );
+    }
+
+    #[test]
+    fn missing_key_path_returns_io_error() {
+        let err = TlsConfigBuilder::new()
+            .cert_path("tests/tls/local.dev_cert.pkcs8.pem")
+            .key_path("tests/tls/nonexistent_key.pem")
+            .build()
+            .unwrap_err();
+        assert!(
+            matches!(err, TlsConfigError::Io(_)),
+            "expected Io error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn empty_key_bytes_returns_empty_key_error() {
+        let cert = include_str!("../tests/tls/local.dev_cert.pkcs8.pem");
+        let err = TlsConfigBuilder::new()
+            .cert(cert.as_bytes())
+            .key(b"")
+            .build()
+            .unwrap_err();
+        assert!(
+            matches!(err, TlsConfigError::EmptyKey),
+            "expected EmptyKey error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn mismatched_cert_key_returns_invalid_key_error() {
+        // Use rsa_pkcs1 cert with ec key — should fail at the ServerConfig builder stage
+        let cert = include_str!("../tests/tls/local.dev_cert.rsa_pkcs1.pem");
+        let key = include_str!("../tests/tls/local.dev_key.sec1_ec.pem");
+        let err = TlsConfigBuilder::new()
+            .cert(cert.as_bytes())
+            .key(key.as_bytes())
+            .build()
+            .unwrap_err();
+        assert!(
+            matches!(err, TlsConfigError::InvalidKey(_)),
+            "expected InvalidKey error for mismatched cert/key, got: {err}"
+        );
+    }
+
+    #[cfg(feature = "tls-fips")]
+    #[test]
+    fn fips_mode_is_active() {
+        aws_lc_rs::try_fips_mode()
+            .expect("FIPS mode should be active when tls-fips feature is enabled");
     }
 }

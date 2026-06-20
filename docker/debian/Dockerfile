@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM debian:13.1-slim AS build
+FROM --platform=$BUILDPLATFORM debian:13.5-slim AS build
 
 ARG TARGETPLATFORM
 ARG SERVER_VERSION=0.0.0
@@ -15,11 +15,11 @@ RUN set -eux \
 
 RUN set -ex \
     && case "$TARGETPLATFORM" in \
-        "linux/amd64") target='x86_64-unknown-linux-musl' ;; \
-        "linux/arm64") target='aarch64-unknown-linux-musl' ;; \
-        "linux/386") target='i686-unknown-linux-musl' ;; \
-        "linux/arm/v7") target='armv7-unknown-linux-musleabihf' ;; \
-        "linux/arm/v6") target='arm-unknown-linux-musleabihf' ;; \
+        "linux/amd64") target='x86_64-unknown-linux-gnu' ;; \
+        "linux/arm64") target='aarch64-unknown-linux-gnu' ;; \
+        "linux/386") target='i686-unknown-linux-gnu' ;; \
+        "linux/arm/v7") target='armv7-unknown-linux-gnueabihf' ;; \
+        "linux/arm/v6") target='arm-unknown-linux-gnueabihf' ;; \
         "linux/ppc64le") target='powerpc64le-unknown-linux-gnu' ;; \
         "linux/s390x") target='s390x-unknown-linux-gnu' ;; \
         *) echo >&2 "error: unsupported $TARGETPLATFORM architecture"; exit 1 ;; \
@@ -37,18 +37,11 @@ RUN set -ex \
     && uname -a \
     && cat /etc/os-release \
     && echo VERSION_NUMBER=$(cat /etc/debian_version) \
-    && case "$TARGETPLATFORM" in \
-        **ppc64*|*s390x*) \
-            echo "warn: can not run sws binary on $TARGETPLATFORM architecture" ;; \
-        *) \
-            static-web-server --version; \
-            static-web-server --help; \
-        ;; \
-    esac \
+    && echo TARGET_PLATFORM=$TARGETPLATFORM \
     && file /usr/local/bin/static-web-server \
     && true
 
-FROM debian:13.1-slim
+FROM debian:13.5-slim
 
 ARG SERVER_VERSION=0.0.0
 ARG SERVER_USER_NAME=sws

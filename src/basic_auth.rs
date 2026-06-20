@@ -8,9 +8,12 @@
 
 use bcrypt::verify as bcrypt_verify;
 use headers::{Authorization, HeaderMap, HeaderMapExt, authorization::Basic};
-use hyper::{Body, Request, Response, StatusCode, header::WWW_AUTHENTICATE};
+use hyper::{Request, Response, StatusCode, header::WWW_AUTHENTICATE};
 
-use crate::{Error, error_page, handler::RequestHandlerOpts, http_ext::MethodExt};
+use crate::Error;
+use crate::error_page;
+use crate::exts::http::MethodExt;
+use crate::handler::RequestHandlerOpts;
 
 /// Initializes `Basic` HTTP Authorization handling
 pub(crate) fn init(credentials: &str, handler_opts: &mut RequestHandlerOpts) {
@@ -25,7 +28,7 @@ pub(crate) fn init(credentials: &str, handler_opts: &mut RequestHandlerOpts) {
 pub(crate) fn pre_process<T>(
     opts: &RequestHandlerOpts,
     req: &Request<T>,
-) -> Option<Result<Response<Body>, Error>> {
+) -> Option<Result<Response<crate::body::Body>, Error>> {
     if opts.basic_auth.is_empty() {
         return None;
     }
@@ -49,9 +52,9 @@ pub(crate) fn pre_process<T>(
         if let Ok(ref mut resp) = result {
             resp.headers_mut().insert(
                 WWW_AUTHENTICATE,
-                "Basic realm=\"Static Web Server\", charset=\"UTF-8\""
-                    .parse()
-                    .unwrap(),
+                hyper::header::HeaderValue::from_static(
+                    "Basic realm=\"Static Web Server\", charset=\"UTF-8\"",
+                ),
             );
         }
         Some(result)
@@ -74,33 +77,29 @@ pub fn check_request(headers: &HeaderMap, userid: &str, password: &str) -> Resul
         .typed_get::<Authorization<Basic>>()
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    if credentials.0.username() != userid {
-        return Err(StatusCode::UNAUTHORIZED);
-    }
-
-    match bcrypt_verify(credentials.0.password(), password) {
-        Ok(valid) if valid => Ok(()),
-        Ok(_) => Err(StatusCode::UNAUTHORIZED),
-        Err(err) => {
-            tracing::error!("bcrypt password verification error: {:?}", err);
-            Err(StatusCode::UNAUTHORIZED)
-        }
-    }
+    let user_match = credentials.0.username() == userid;
+    let password_match = bcrypt_verify(credentials.0.password(), password)
+        .inspect_err(|err| tracing::error!("bcrypt password verification error: {:?}", err))
+        .unwrap_or(false);
+    let valid = user_match && password_match;
+    valid.then_some(()).ok_or(StatusCode::UNAUTHORIZED)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{check_request, pre_process};
+    use crate::body;
+    use crate::body::Body;
     use crate::{Error, handler::RequestHandlerOpts};
     use headers::HeaderMap;
-    use hyper::{Body, Request, Response, StatusCode, header::WWW_AUTHENTICATE};
+    use hyper::{Request, Response, StatusCode, header::WWW_AUTHENTICATE};
 
     fn make_request(method: &str, auth_header: &str) -> Request<Body> {
         let mut builder = Request::builder();
         if !auth_header.is_empty() {
             builder = builder.header("Authorization", auth_header);
         }
-        builder.method(method).uri("/").body(Body::empty()).unwrap()
+        builder.method(method).uri("/").body(body::empty()).unwrap()
     }
 
     fn is_401(result: Option<Result<Response<Body>, Error>>) -> bool {
@@ -112,7 +111,7 @@ mod tests {
         }
     }
 
-    fn is_500(result: Option<Result<Response<Body>, Error>>) -> bool {
+    fn is_500(result: Option<Result<Response<crate::body::Body>, Error>>) -> bool {
         if let Some(Ok(response)) = result {
             response.status() == StatusCode::INTERNAL_SERVER_ERROR
         } else {

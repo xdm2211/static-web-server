@@ -77,21 +77,25 @@
 //! **Default** |
 //! `default` | Activates the default features.
 //! `all` | Activates all features including the default and experimental ones. E.g. this feature is used when building the SWS binaries.
-//! `experimental` | Activates all unstable features.
+//! `experimental` | Activates all unstable features (tokio runtime metrics).
 //! [**HTTP2/TLS**](https://static-web-server.net/features/http2-tls/) |
 //! `http2` | Activates the HTTP2 and TLS feature.
 //! [**Compression**](https://static-web-server.net/features/compression/) |
-//! `compression` | Activates auto-compression and compression static with all supported algorithms.
-//! `compression-brotli` | Activates auto-compression/compression static with only the `brotli` algorithm.
-//! `compression-deflate` | Activates auto-compression/compression static with only the `deflate` algorithm.
-//! `compression-gzip` | Activates auto-compression/compression static with only the `gzip` algorithm.
-//! `compression-zstd` | Activates auto-compression/compression static with only the `zstd` algorithm.
+//! `compression` | Activates auto-compression with all supported algorithms.
+//! `compression-brotli` | Activates auto-compression with only the `brotli` algorithm.
+//! `compression-deflate` | Activates auto-compression with only the `deflate` algorithm.
+//! `compression-gzip` | Activates auto-compression with only the `gzip` algorithm.
+//! `compression-zstd` | Activates auto-compression with only the `zstd` algorithm.
 //! [**Directory Listing**](https://static-web-server.net/features/directory-listing/) |
 //! `directory-listing` | Activates the directory listing feature.
 //! [**Basic Authorization**](./features/basic-authentication.md) |
 //! `basic-auth` | Activates the Basic HTTP Authorization Schema feature.
 //! [**Fallback Page**](./features/error-pages.md#fallback-page-for-use-with-client-routers) |
 //! `fallback-page` | Activates the Fallback Page feature.
+//! **Metrics** |
+//! `metrics` | Activates the Prometheus metrics endpoint (`/metrics`). Enabled by default but requires the `--metrics` flag at runtime. Tokio runtime metrics are additionally available via the `experimental` feature.
+//! **In-Memory Cache** |
+//! `mem-cache` | Activates the in-memory file cache with LFU admission and LRU eviction policies. Enabled by default and configured via TOML `[advanced.memory-cache]`.
 //!
 
 #![deny(missing_docs)]
@@ -113,6 +117,7 @@ pub mod logger;
 #[cfg(feature = "basic-auth")]
 #[cfg_attr(docsrs, doc(cfg(feature = "basic-auth")))]
 pub mod basic_auth;
+pub mod body;
 #[cfg(any(
     feature = "compression",
     feature = "compression-gzip",
@@ -131,23 +136,6 @@ pub mod basic_auth;
     )))
 )]
 pub mod compression;
-#[cfg(any(
-    feature = "compression",
-    feature = "compression-gzip",
-    feature = "compression-brotli",
-    feature = "compression-zstd",
-    feature = "compression-deflate"
-))]
-#[cfg_attr(
-    docsrs,
-    doc(cfg(any(
-        feature = "compression",
-        feature = "compression-gzip",
-        feature = "compression-brotli",
-        feature = "compression-zstd",
-        feature = "compression-deflate"
-    )))
-)]
 pub mod compression_static;
 pub(crate) mod conditional_headers;
 pub mod control_headers;
@@ -156,26 +144,25 @@ pub mod custom_headers;
 #[cfg(feature = "directory-listing")]
 #[cfg_attr(docsrs, doc(cfg(feature = "directory-listing")))]
 pub mod directory_listing;
-#[cfg(feature = "directory-listing-download")]
-#[cfg_attr(docsrs, doc(cfg(feature = "directory-listing-download")))]
-pub mod directory_listing_download;
 pub mod error_page;
+pub(crate) mod etag;
+pub mod exts;
 #[cfg(feature = "fallback-page")]
 #[cfg_attr(docsrs, doc(cfg(feature = "fallback-page")))]
 pub mod fallback_page;
 pub(crate) mod fs;
 pub mod handler;
-pub(crate) mod headers_ext;
 pub(crate) mod health;
-#[cfg(feature = "http2")]
-#[cfg_attr(docsrs, doc(cfg(feature = "http2")))]
+#[cfg(feature = "tls")]
+#[cfg_attr(docsrs, doc(cfg(feature = "tls")))]
 pub mod https_redirect;
 pub(crate) mod log_addr;
 pub mod maintenance_mode;
 pub(crate) mod markdown;
-#[cfg(feature = "experimental")]
-pub(crate) mod mem_cache;
-#[cfg(all(unix, feature = "experimental"))]
+#[cfg(feature = "mem-cache")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mem-cache")))]
+pub mod mem_cache;
+#[cfg(feature = "metrics")]
 pub(crate) mod metrics;
 pub mod redirects;
 pub(crate) mod response;
@@ -188,10 +175,10 @@ pub mod settings;
 #[cfg_attr(docsrs, doc(cfg(any(unix, windows))))]
 pub mod signals;
 pub mod static_files;
-#[cfg(feature = "http2")]
-#[cfg_attr(docsrs, doc(cfg(feature = "http2")))]
+pub(crate) mod text_charset;
+#[cfg(feature = "tls")]
+#[cfg_attr(docsrs, doc(cfg(feature = "tls")))]
 pub mod tls;
-pub mod transport;
 pub(crate) mod virtual_hosts;
 #[cfg(windows)]
 #[cfg_attr(docsrs, doc(cfg(windows)))]
@@ -202,8 +189,6 @@ pub mod error;
 // Private modules
 #[doc(hidden)]
 mod helpers;
-#[doc(hidden)]
-pub mod http_ext;
 #[doc(hidden)]
 pub mod testing;
 

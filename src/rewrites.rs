@@ -5,10 +5,15 @@
 
 //! Module that allows to rewrite request URLs with pattern matching support.
 //!
+//! See [`crate::redirects`] for the ReDoS / pattern-complexity notes that
+//! also apply to rewrites: patterns are admin-supplied, evaluated by the
+//! non-backtracking `regex_lite` engine, and URIs longer than
+//! [`crate::redirects::MAX_URI_LEN_FOR_REGEX`] are skipped.
 
 use headers::HeaderValue;
-use hyper::{Body, Request, Response, StatusCode, Uri, header::HOST};
+use hyper::{Request, Response, StatusCode, Uri, header::HOST};
 
+use crate::body::Body;
 use crate::{
     Error,
     handler::RequestHandlerOpts,
@@ -23,9 +28,23 @@ pub(crate) fn pre_process<T>(
 ) -> Option<Result<Response<Body>, Error>> {
     let rewrites = opts.advanced_opts.as_ref()?.rewrites.as_deref()?;
     let uri_path = req.uri().path();
+    // SECURITY (ReDoS bound): mirror redirects' cap on regex input size.
+    if uri_path.len() > crate::redirects::MAX_URI_LEN_FOR_REGEX {
+        tracing::debug!(
+            "rewrites: skipping match, uri path length {} exceeds cap {}",
+            uri_path.len(),
+            crate::redirects::MAX_URI_LEN_FOR_REGEX
+        );
+        return None;
+    }
 
     let matched = rewrite_uri_path(uri_path, Some(rewrites))?;
-    let dest = match replace_placeholders(uri_path, &matched.source, &matched.destination) {
+    let dest = match replace_placeholders(
+        uri_path,
+        &matched.source,
+        &matched.destination,
+        &matched.replacer,
+    ) {
         Ok(dest) => dest,
         Err(err) => return handle_error(err, opts, req),
     };
@@ -42,7 +61,7 @@ pub(crate) fn pre_process<T>(
                 );
             }
         };
-        let mut resp = Response::new(Body::empty());
+        let mut resp = Response::new(crate::body::empty());
         resp.headers_mut().insert(hyper::header::LOCATION, loc);
         *resp.status_mut() = match redirect_type {
             RedirectsKind::Permanent => StatusCode::MOVED_PERMANENTLY,
@@ -88,13 +107,13 @@ fn merge_uris(orig_uri: &Uri, new_uri: &str) -> Result<Uri, Error> {
     if parts.path_and_query.is_none() {
         parts.path_and_query = orig_uri.path_and_query().cloned();
     }
-    if let Some(path_and_query) = &mut parts.path_and_query {
-        if let (None, Some(query)) = (path_and_query.query(), orig_uri.query()) {
-            *path_and_query = [path_and_query.as_str(), "?", query]
-                .into_iter()
-                .collect::<String>()
-                .parse()?;
-        }
+    if let Some(path_and_query) = &mut parts.path_and_query
+        && let (None, Some(query)) = (path_and_query.query(), orig_uri.query())
+    {
+        *path_and_query = [path_and_query.as_str(), "?", query]
+            .into_iter()
+            .collect::<String>()
+            .parse()?;
     }
     Ok(Uri::from_parts(parts)?)
 }
@@ -120,12 +139,13 @@ pub fn rewrite_uri_path<'a>(
 #[cfg(test)]
 mod tests {
     use super::pre_process;
+    use crate::body::Body;
     use crate::{
         Error,
         handler::RequestHandlerOpts,
-        settings::{Advanced, Rewrites, file::RedirectsKind},
+        settings::{Advanced, Rewrites, build_placeholder_replacer, file::RedirectsKind},
     };
-    use hyper::{Body, Request, Response, StatusCode, header::HOST};
+    use hyper::{Request, Response, StatusCode, header::HOST};
     use regex_lite::Regex;
 
     fn make_request(host: &str, uri: &str) -> Request<Body> {
@@ -133,30 +153,46 @@ mod tests {
         if !host.is_empty() {
             builder = builder.header("Host", host);
         }
-        builder.method("GET").uri(uri).body(Body::empty()).unwrap()
+        builder
+            .method("GET")
+            .uri(uri)
+            .body(crate::body::empty())
+            .unwrap()
     }
 
     fn get_rewrites() -> Vec<Rewrites> {
+        let s1 = Regex::new(r"/source1$").unwrap();
+        let r1 = build_placeholder_replacer(&s1);
+        let s2 = Regex::new(r"/source2$").unwrap();
+        let r2 = build_placeholder_replacer(&s2);
+        let s3 = Regex::new(r"/(prefix/)?(source3)/(.*)").unwrap();
+        let r3 = build_placeholder_replacer(&s3);
+        let s4 = Regex::new(r"/(source4)/(.*)").unwrap();
+        let r4 = build_placeholder_replacer(&s4);
         vec![
             Rewrites {
-                source: Regex::new(r"/source1$").unwrap(),
+                source: s1,
                 destination: "/destination1".into(),
                 redirect: None,
+                replacer: r1,
             },
             Rewrites {
-                source: Regex::new(r"/source2$").unwrap(),
+                source: s2,
                 destination: "/destination2".into(),
                 redirect: Some(RedirectsKind::Temporary),
+                replacer: r2,
             },
             Rewrites {
-                source: Regex::new(r"/(prefix/)?(source3)/(.*)").unwrap(),
+                source: s3,
                 destination: "/destination3/$2/$3".into(),
                 redirect: Some(RedirectsKind::Permanent),
+                replacer: r3,
             },
             Rewrites {
-                source: Regex::new(r"/(source4)/(.*)").unwrap(),
+                source: s4,
                 destination: "http://example.net:1234/destination4/$1?$2".into(),
                 redirect: None,
+                replacer: r4,
             },
         ]
     }

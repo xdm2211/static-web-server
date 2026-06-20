@@ -4,10 +4,14 @@
 
 The following Static Web Server versions are currently being supported with security updates.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 2.x.x   | :white_check_mark: (current stable) |
-| 1.x.x   | :x: (deprecated due to [End of Life](https://github.com/static-web-server/static-web-server/releases/tag/v1.19.4)) |
+| Version | Supported |
+| -- | -- |
+| 3.x.x | :white_check_mark: (development) |
+| 2.x.x | :white_check_mark: (Stable LTS - `2026-06-12`) |
+| 1.x.x | :x: (deprecated due to [End of Life](https://github.com/static-web-server/static-web-server/releases/tag/v1.19.4)) |
+
+> [!IMPORTANT]
+> Note that development versions may contain security vulnerabilities that have not yet been identified or remediated. Users are encouraged to use the latest stable or **LTS** version available for production use.
 
 ## Report a security issue
 

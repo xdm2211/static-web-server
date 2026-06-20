@@ -4,9 +4,7 @@ Follow these instructions to either build **`SWS`** project from the source or t
 
 ## Building project from source
 
-If you want to build **SWS** from the source, all you need is a [Rust 2021 Edition](https://blog.rust-lang.org/2021/05/11/edition-2021.html) installed.
-
-So make sure to install Rust [1.85.0](https://blog.rust-lang.org/2025/02/20/Rust-1.85.0/) or newer (or nightly) along with [the toolchain(s)](https://rust-lang.github.io/rustup/concepts/toolchains.html) of your preference.
+If you want to build **SWS** from the source, make sure to install Rust [1.88.0](https://blog.rust-lang.org/2025/06/26/Rust-1.88.0/) or newer (or nightly) along with [the toolchain(s)](https://rust-lang.github.io/rustup/concepts/toolchains.html) of your preference.
 
 Then clone the repository and use [Cargo](https://doc.rust-lang.org/cargo/) to build the project from the source.
 
@@ -19,6 +17,7 @@ cargo build --release
 Finally, the release binary should be available at `target/release/static-web-server` or under your toolchain directory chosen.
 
 !!! info "Don't use the project's `Makefile`"
+
     Please don't use the project's `Makefile` since it's only intended for development and some on-demand tasks.
 
 ## Cargo features
@@ -26,26 +25,34 @@ Finally, the release binary should be available at `target/release/static-web-se
 When building from the source, all features are enabled by default.
 However, you can disable just the ones you don't need from the lists below.
 
-Feature | Description
----------|------
-**Default** |
-`default` | Activates the default features by omission.
-`all` | Activates all available features including the `experimental` feature. This is the default feature used when building SWS binaries.
-`experimental` | Activates all SWS experimental features. Make sure to also provide the required `RUSTFLAGS` if the feature requires so.
-[**HTTP2/TLS**](./features/http2-tls.md) |
-`http2` | Activates the HTTP2 and TLS feature.
-[**Compression**](./features/compression.md) |
-`compression` | Activates auto-compression and compression static with all supported algorithms.
-`compression-brotli` | Activates auto-compression/compression static with only the `brotli` algorithm.
-`compression-deflate` | Activates auto-compression/compression static with only the `deflate` algorithm.
-`compression-gzip` | Activates auto-compression/compression static with only the `gzip` algorithm.
-`compression-zstd` | Activates auto-compression/compression static with only the `zstd` algorithm.
-[**Directory Listing**](./features/directory-listing.md) |
-`directory-listing` | Activates the directory listing feature.
-[**Basic Authorization**](./features/basic-authentication.md) |
-`basic-auth` | Activates the Basic HTTP Authorization Schema feature.
-[**Fallback Page**](./features/error-pages.md#fallback-page-for-use-with-client-routers) |
-`fallback-page` | Activates the Fallback Page feature.
+| Feature | Description |
+| -- | -- |
+| **Default** |  |
+| `default` | Activates the default features by omission. |
+| `all` | Activates all available features including the `experimental` feature. This is the default feature used when building SWS binaries. |
+| [**HTTP2/TLS**](./features/http2-tls.md) |  |
+| `tls` | Activates the TLS feature. Requires exactly one of `tls-ring` or `tls-fips` to select a TLS crypto provider. |
+| `tls-ring` | Activates the TLS feature with [`ring`](https://github.com/briansmith/ring) as the TLS crypto provider. Included by default. |
+| `tls-fips` | Activates the TLS feature with [`aws-lc-rs`](https://github.com/aws/aws-lc-rs) in FIPS mode as the TLS crypto provider. Requires `cmake`, `go`, and `libclang` at build time. Supported only on linux x86_64/aarch64 (gnu and musl). |
+| `http2` | Activates the HTTP/2 protocol support. Requires TLS to be enabled. |
+| [**Compression**](./features/compression.md) |  |
+| `compression` | Activates auto-compression with all supported algorithms. |
+| `compression-brotli` | Activates auto-compression with only the `brotli` algorithm. |
+| `compression-deflate` | Activates auto-compression with only the `deflate` algorithm. |
+| `compression-gzip` | Activates auto-compression with only the `gzip` algorithm. |
+| `compression-zstd` | Activates auto-compression with only the `zstd` algorithm. |
+| [**Directory Listing**](./features/directory-listing.md) |  |
+| `directory-listing` | Activates the directory listing feature. |
+| [**Basic Authorization**](./features/basic-authentication.md) |  |
+| `basic-auth` | Activates the Basic HTTP Authorization Schema feature. |
+| [**Fallback Page**](./features/error-pages.md#fallback-page-for-use-with-client-routers) |  |
+| `fallback-page` | Activates the Fallback Page feature. |
+| [**Metrics**](./features/metrics.md) |  |
+| `metrics` | Activates the Prometheus metrics endpoint (`/metrics`). Enabled by default but requires the `--metrics` flag at runtime. |
+| [**In-Memory Cache**](./features/memory-cache.md) |  |
+| `mem-cache` | Activates the in-memory file cache with LFU admission and LRU eviction. Enabled by default. Configured via `[advanced.memory-cache]` in the TOML file. |
+| **Experimental** |  |
+| `experimental` | Activates all SWS experimental features (Tokio runtime metrics). Requires `RUSTFLAGS="--cfg tokio_unstable"`. |
 
 ### Disable all default features
 
@@ -118,6 +125,7 @@ docker run -it --rm \
 ```
 
 !!! tip "Output the docs in a different directory"
+
     If you want to output the docs in a different directory then append the `--site-dir=/new/dir/path/` argument to the *"squidfunk/mkdocs-material"* `build` command and make sure to provide the new directory path.
 
 ### Development server
@@ -131,3 +139,14 @@ docker-compose -f docs/docker-compose.yml up
 ```
 
 Now the server will be available at `localhost:8000`
+
+## Formatting Markdown files
+
+This project makes use of [mdformat](https://mdformat.readthedocs.io/en/stable/) to format Markdown files.
+The CI job `devel-project-docs` checks that all Markdown files are formatted correctly.
+
+To format documentation changes, you can run `mdformat` manually using [uv](https://docs.astral.sh/uv/getting-started/installation/):
+
+```sh
+uvx --python ">=3.13" --with mdformat-mkdocs mdformat ./*.md docs/
+```

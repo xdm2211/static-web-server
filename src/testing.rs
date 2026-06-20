@@ -45,14 +45,6 @@ pub mod fixtures {
             feature = "compression-deflate"
         )))]
         let compression = false;
-        #[cfg(not(any(
-            feature = "compression",
-            feature = "compression-gzip",
-            feature = "compression-brotli",
-            feature = "compression-zstd",
-            feature = "compression-deflate"
-        )))]
-        let compression_static = false;
         #[cfg(any(
             feature = "compression",
             feature = "compression-gzip",
@@ -61,17 +53,13 @@ pub mod fixtures {
             feature = "compression-deflate"
         ))]
         let compression = general.compression;
-        #[cfg(any(
-            feature = "compression",
-            feature = "compression-gzip",
-            feature = "compression-brotli",
-            feature = "compression-zstd",
-            feature = "compression-deflate"
-        ))]
         let compression_static = general.compression_static;
 
         RequestHandlerOpts {
-            root_dir: general.root,
+            // Canonicalize once for consistency with production startup
+            // (see `server::opts::init`). The path containment check expects
+            // an already-canonical base.
+            root_dir: general.root.canonicalize().unwrap_or(general.root),
             compression,
             compression_static,
             #[cfg(any(
@@ -94,6 +82,7 @@ pub mod fixtures {
             cors: None,
             security_headers: general.security_headers,
             cache_control_headers: general.cache_control_headers,
+            etag: general.etag,
             page404: general.page404,
             page50x: general.page50x,
             // TODO: add support or `page_fallback` when required
@@ -106,17 +95,22 @@ pub mod fixtures {
             log_forwarded_for: general.log_forwarded_for,
             trusted_proxies: general.trusted_proxies,
             redirect_trailing_slash: general.redirect_trailing_slash,
-            ignore_hidden_files: general.ignore_hidden_files,
-            disable_symlinks: general.disable_symlinks,
+            include_hidden: general.include_hidden,
+            follow_symlinks: general.follow_symlinks,
             accept_markdown: general.accept_markdown,
-            index_files: vec![general.index_files],
+            text_charset: general.text_charset,
+            index_files: general
+                .index_files
+                .split(',')
+                .map(|s| s.trim().to_owned())
+                .collect(),
             health: general.health,
-            #[cfg(all(unix, feature = "experimental"))]
-            experimental_metrics: general.experimental_metrics,
+            #[cfg(feature = "metrics")]
+            metrics_enabled: general.metrics,
             maintenance_mode: general.maintenance_mode,
             maintenance_mode_status: general.maintenance_mode_status,
             maintenance_mode_file: general.maintenance_mode_file,
-            #[cfg(feature = "experimental")]
+            #[cfg(feature = "mem-cache")]
             memory_cache: None,
             advanced_opts: advanced,
         }

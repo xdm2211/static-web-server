@@ -5,14 +5,19 @@
 
 //! A module that provides file path-related facilities.
 
+use anyhow::Context;
 use hyper::StatusCode;
 use percent_encoding::percent_decode_str;
 use std::path::{Component, Path, PathBuf};
+
+use crate::Result;
 
 /// `Path` extensions trait.
 pub(crate) trait PathExt {
     /// If file path is hidden.
     fn is_hidden(&self) -> bool;
+    /// If the path is a symlink or contains intermediate symlink components.
+    fn contains_symlink(&self, base: &Path) -> Result<bool>;
 }
 
 impl PathExt for Path {
@@ -24,6 +29,33 @@ impl PathExt for Path {
                 _ => None,
             })
             .any(|s| s.starts_with('.'))
+    }
+
+    /// Checks if the path is a symlink or contains intermediate symlink components.
+    /// This could be an expensive operation as it requires filesystem access for each path component.
+    fn contains_symlink(&self, base: &Path) -> Result<bool> {
+        let mut current = base.to_path_buf();
+        current.reserve(self.as_os_str().len());
+        for component in self.components() {
+            match component {
+                Component::Normal(c) => {
+                    current.push(c);
+                    let meta = std::fs::symlink_metadata(&current).with_context(|| {
+                        format!("unable to get metadata for path '{}'", current.display())
+                    })?;
+                    if meta.file_type().is_symlink() {
+                        return Ok(true);
+                    }
+                }
+                Component::CurDir => {}
+                Component::Prefix(_) | Component::RootDir | Component::ParentDir => {
+                    tracing::debug!(
+                        "dir: skipping segment containing invalid prefix, dots or backslashes"
+                    );
+                }
+            }
+        }
+        Ok(false)
     }
 }
 
@@ -48,7 +80,8 @@ fn decode_tail_path(tail: &str) -> PathBuf {
 }
 
 /// Sanitizes a base/tail path and then it returns a unified one.
-pub(crate) fn sanitize_path(base: &Path, tail: &str) -> Result<PathBuf, StatusCode> {
+#[doc(hidden)]
+pub fn sanitize_path(base: &Path, tail: &str) -> Result<PathBuf, StatusCode> {
     let path_decoded = decode_tail_path(tail);
     let mut full_path = base.to_path_buf();
     tracing::trace!("dir: base={:?}, route={:?}", full_path, path_decoded);
@@ -80,7 +113,7 @@ pub(crate) fn sanitize_path(base: &Path, tail: &str) -> Result<PathBuf, StatusCo
 
 #[cfg(test)]
 mod tests {
-    use super::sanitize_path;
+    use super::{PathExt, sanitize_path};
     use std::path::PathBuf;
 
     fn root_dir() -> PathBuf {
@@ -122,5 +155,107 @@ mod tests {
             sanitize_path(base_dir, "/C:\\/foo.html").unwrap(),
             expected_path
         );
+    }
+
+    #[test]
+    fn test_contains_symlink_returns_false() {
+        let base = PathBuf::from("tests/fixtures/public");
+        let user_path = PathBuf::from("./index.htm");
+
+        match user_path.contains_symlink(&base) {
+            Ok(contains) => assert!(!contains),
+            Err(err) => panic!("unexpected error when checking for symlinks: {err}"),
+        }
+    }
+
+    #[test]
+    fn test_contains_symlink_returns_true() {
+        let base = PathBuf::from("tests/fixtures/public");
+        let user_path = PathBuf::from("./readme.md");
+
+        match user_path.contains_symlink(&base) {
+            Ok(contains) => assert!(contains),
+            Err(err) => panic!("unexpected error when checking for symlinks: {err}"),
+        }
+    }
+
+    #[test]
+    fn test_contains_symlink_returns_error() {
+        let base = PathBuf::from("tests/fixtures/public");
+        let user_path = PathBuf::from("./unknown_file.txt");
+
+        match user_path.contains_symlink(&base) {
+            Ok(_) => panic!("expected error when checking for symlinks on non-existent path"),
+            Err(err) => assert!(
+                err.to_string().contains("unable to get metadata for path"),
+                "unexpected error message: {err}"
+            ),
+        }
+    }
+
+    // Property-based regression tests for `sanitize_path`
+    //
+    // These properties encode the security invariants of path
+    // sanitisation: regardless of the request tail (random bytes,
+    // percent-encoded escapes, dot segments, Windows drive prefixes,
+    // mixed slashes, embedded NULs) the resulting path MUST stay
+    // inside the configured `base` directory.
+    //
+    // We assert this structurally (no `RootDir`/`Prefix`/`ParentDir`
+    // components beyond `base` itself) so the property holds without
+    // touching the filesystem.
+    use proptest::prelude::*;
+    use std::path::Component;
+
+    fn assert_under_base(base: &std::path::Path, full: &std::path::Path) {
+        let extra = full
+            .strip_prefix(base)
+            .expect("sanitized path must extend base");
+        for comp in extra.components() {
+            match comp {
+                Component::Normal(_) | Component::CurDir => {}
+                Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                    panic!("sanitize_path leaked traversal component {comp:?} in {full:?}");
+                }
+            }
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: 256, ..ProptestConfig::default()
+        })]
+
+        /// Arbitrary ASCII-ish tails (including `../`, `\\`, `%2e`, NULs,
+        /// drive letters) must never escape the base directory.
+        #[test]
+        fn prop_sanitize_path_never_escapes_base(tail in "\\PC{0,128}") {
+            let base = PathBuf::from("docker/public");
+            if let Ok(full) = sanitize_path(&base, &tail) {
+                assert_under_base(&base, &full);
+            }
+        }
+
+        /// Targeted traversal patterns: many `../` segments interleaved
+        /// with arbitrary content.
+        #[test]
+        fn prop_sanitize_path_resists_dot_dot_floods(
+            tail in proptest::collection::vec(
+                prop_oneof![
+                    Just("../".to_string()),
+                    Just("..\\".to_string()),
+                    Just("%2e%2e/".to_string()),
+                    Just("./".to_string()),
+                    "[a-zA-Z0-9_.-]{1,8}".prop_map(String::from),
+                ],
+                0..32,
+            )
+        ) {
+            let base = PathBuf::from("docker/public");
+            let tail = tail.concat();
+            if let Ok(full) = sanitize_path(&base, &tail) {
+                assert_under_base(&base, &full);
+            }
+        }
     }
 }

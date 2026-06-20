@@ -13,6 +13,7 @@ Latest **{{RELEASE_VERSION}}** release `{{RELEASE_DATE}}` ([changelog](https://g
 See also [the release history](https://github.com/static-web-server/static-web-server/releases) on GitHub.
 
 !!! info "Docker"
+
     If you are working with Docker containers then check out [the Docker feature page](https://static-web-server.net/features/docker/).
 
 ## Installation methods
@@ -21,8 +22,16 @@ See also [the release history](https://github.com/static-web-server/static-web-s
 
 Use the binary installer if your package manager is not supported.
 
+With [curl](https://curl.se/).
+
 ```sh
 curl --proto '=https' --tlsv1.2 -sSfL https://get.static-web-server.net | sh
+```
+
+Or with [GNU wget](https://www.gnu.org/software/wget/) (Busybox `wget` is not supported).
+
+```sh
+wget --https-only --secure-protocol=TLSv1_2 -qO- https://get.static-web-server.net | sh
 ```
 
 `static-web-server` will be installed by default under the `/usr/local/bin` directory.
@@ -55,7 +64,7 @@ yay -S static-web-server-bin
 
 Add the `rust` repository and install [the package](https://gitlab.exherbo.org/exherbo/rust/-/tree/master/packages/www-servers/static-web-server) through `cave`:
 
-```
+```sh
 cave sync
 cave resolve -x repository/rust
 cave resolve -x static-web-server
@@ -113,7 +122,7 @@ wasmer run wasmer/static-web-server --net --enable-threads --mapdir /public:/my/
 
 ## Binaries
 
-Pre-compiled binaries grouped by CPU architectures.
+Pre-compiled binaries are grouped by CPU architectures or features, depending on the case.
 
 ### x86_64
 
@@ -134,6 +143,13 @@ Pre-compiled binaries grouped by CPU architectures.
 - [static-web-server-{{RELEASE_VERSION}}-x86_64-unknown-illumos.tar.gz](https://github.com/static-web-server/static-web-server/releases/download/{{RELEASE_VERSION}}/static-web-server-{{RELEASE_VERSION}}-x86_64-unknown-illumos.tar.gz)<br>
 <small>**SHA256SUM:** `{{x86_64-unknown-illumos.tar.gz}}`</small>
 
+#### FIPS
+
+- [static-web-server-{{RELEASE_VERSION}}-x86_64-unknown-linux-gnu-fips.tar.gz](https://github.com/static-web-server/static-web-server/releases/download/{{RELEASE_VERSION}}/static-web-server-{{RELEASE_VERSION}}-x86_64-unknown-linux-gnu-fips.tar.gz)<br>
+<small>**SHA256SUM:** `{{x86_64-unknown-linux-gnu-fips.tar.gz}}`</small>
+- [static-web-server-{{RELEASE_VERSION}}-x86_64-unknown-linux-musl-fips.tar.gz](https://github.com/static-web-server/static-web-server/releases/download/{{RELEASE_VERSION}}/static-web-server-{{RELEASE_VERSION}}-x86_64-unknown-linux-musl-fips.tar.gz)<br>
+<small>**SHA256SUM:** `{{x86_64-unknown-linux-musl-fips.tar.gz}}`</small>
+
 ### ARM64
 
 - [static-web-server-{{RELEASE_VERSION}}-aarch64-unknown-linux-gnu.tar.gz](https://github.com/static-web-server/static-web-server/releases/download/{{RELEASE_VERSION}}/static-web-server-{{RELEASE_VERSION}}-aarch64-unknown-linux-gnu.tar.gz)<br>
@@ -146,6 +162,13 @@ Pre-compiled binaries grouped by CPU architectures.
 <small>**SHA256SUM:** `{{aarch64-linux-android.tar.gz}}`</small>
 - [static-web-server-{{RELEASE_VERSION}}-aarch64-pc-windows-msvc.zip](https://github.com/static-web-server/static-web-server/releases/download/{{RELEASE_VERSION}}/static-web-server-{{RELEASE_VERSION}}-aarch64-pc-windows-msvc.zip)<br>
 <small>**SHA256SUM:** `{{aarch64-pc-windows-msvc.zip}}`</small>
+
+#### FIPS
+
+- [static-web-server-{{RELEASE_VERSION}}-aarch64-unknown-linux-gnu-fips.tar.gz](https://github.com/static-web-server/static-web-server/releases/download/{{RELEASE_VERSION}}/static-web-server-{{RELEASE_VERSION}}-aarch64-unknown-linux-gnu-fips.tar.gz)<br>
+<small>**SHA256SUM:** `{{aarch64-unknown-linux-gnu-fips.tar.gz}}`</small>
+- [static-web-server-{{RELEASE_VERSION}}-aarch64-unknown-linux-musl-fips.tar.gz](https://github.com/static-web-server/static-web-server/releases/download/{{RELEASE_VERSION}}/static-web-server-{{RELEASE_VERSION}}-aarch64-unknown-linux-musl-fips.tar.gz)<br>
+<small>**SHA256SUM:** `{{aarch64-unknown-linux-musl-fips.tar.gz}}`</small>
 
 ### x86
 
@@ -166,6 +189,8 @@ Pre-compiled binaries grouped by CPU architectures.
 <small>**SHA256SUM:** `{{arm-unknown-linux-musleabihf.tar.gz}}`</small>
 - [static-web-server-{{RELEASE_VERSION}}-armv7-unknown-linux-musleabihf.tar.gz](https://github.com/static-web-server/static-web-server/releases/download/{{RELEASE_VERSION}}/static-web-server-{{RELEASE_VERSION}}-armv7-unknown-linux-musleabihf.tar.gz)<br>
 <small>**SHA256SUM:** `{{armv7-unknown-linux-musleabihf.tar.gz}}`</small>
+- [static-web-server-{{RELEASE_VERSION}}-armv7-unknown-linux-gnueabihf.tar.gz](https://github.com/static-web-server/static-web-server/releases/download/{{RELEASE_VERSION}}/static-web-server-{{RELEASE_VERSION}}-armv7-unknown-linux-gnueabihf.tar.gz)<br>
+<small>**SHA256SUM:** `{{armv7-unknown-linux-gnueabihf.tar.gz}}`</small>
 
 ### PowerPC
 

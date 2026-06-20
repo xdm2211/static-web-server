@@ -9,11 +9,9 @@
 use bytes::{Bytes, BytesMut};
 use futures_util::Stream;
 use std::fs::Metadata;
-use std::io::Read;
+use std::io::{self, Read};
 use std::pin::Pin;
 use std::task::{Context, Poll};
-
-use crate::Result;
 
 #[cfg(unix)]
 const DEFAULT_READ_BUF_SIZE: usize = 4_096;
@@ -25,23 +23,32 @@ const DEFAULT_READ_BUF_SIZE: usize = 8_192;
 pub(crate) struct FileStream<T> {
     pub(crate) reader: T,
     pub(crate) buf_size: usize,
+    buf: BytesMut,
+}
+
+impl<T> FileStream<T> {
+    pub(crate) fn new(reader: T, buf_size: usize) -> Self {
+        Self {
+            reader,
+            buf_size,
+            buf: BytesMut::with_capacity(buf_size),
+        }
+    }
 }
 
 impl<T: Read + Unpin> Stream for FileStream<T> {
-    type Item = Result<Bytes>;
+    type Item = io::Result<Bytes>;
 
     fn poll_next(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut buf = BytesMut::zeroed(self.buf_size);
-        match Pin::into_inner(self).reader.read(&mut buf[..]) {
+        let this = Pin::into_inner(self);
+        this.buf.resize(this.buf_size, 0);
+        match this.reader.read(&mut this.buf[..]) {
+            Ok(0) => Poll::Ready(None),
             Ok(n) => {
-                if n == 0 {
-                    Poll::Ready(None)
-                } else {
-                    buf.truncate(n);
-                    Poll::Ready(Some(Ok(buf.freeze())))
-                }
+                let data = this.buf.split_to(n).freeze();
+                Poll::Ready(Some(Ok(data)))
             }
-            Err(err) => Poll::Ready(Some(Err(anyhow::Error::from(err)))),
+            Err(err) => Poll::Ready(Some(Err(err))),
         }
     }
 }

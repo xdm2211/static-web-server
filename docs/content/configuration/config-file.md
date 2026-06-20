@@ -5,6 +5,7 @@
 It's disabled by default and can be enabled by passing a _string file path_ via the `-w, --config-file` option or its equivalent [SERVER_CONFIG_FILE](./../configuration/environment-variables.md#server_config_file) env.
 
 !!! info "The default config file path is checked at startup time"
+
     If using the default config file path (`./sws.toml`), SWS will attempt to load it at startup time.
     If it is not found or can not be loaded then SWS will continue using the server defaults.
 
@@ -22,6 +23,7 @@ root = "./public"
 
 #### Logging
 log-level = "error"
+log-format = "json"
 
 #### Cache Control headers
 cache-control-headers = true
@@ -96,6 +98,9 @@ health = false
 #### Markdown content negotiation
 accept-markdown = false
 
+#### Default charset for text responses (enabled by default)
+# text-charset = false
+
 #### List of index files
 # index-files = "index.html, index.htm"
 #### Maintenance Mode
@@ -168,6 +173,12 @@ maintenance-mode = false
 # [[advanced.virtual-hosts]]
 # host = "blog.example.com"
 # root = "/var/blog/html"
+
+# [advanced.memory-cache]
+# capacity = 100
+# ttl = 1800      # 30 minutes
+# tti = 300       # 5 minutes
+# max-file-size = 8192  # 8 MiB
 ```
 
 ### General options
@@ -177,13 +188,14 @@ The TOML `[general]` section allows adjusting the current options available via 
 So they are equivalent to each other **except** for the `-w, --config-file` option which is omitted and can not be used for obvious reasons.
 
 !!! info "Config file-based features are optional"
+
     All server feature options via the configuration file are optional and can be omitted as needed.
 
 ### Advanced options
 
 The TOML `[advanced]` section is intended for more complex features.
 
-For example [Custom HTTP Headers](../features/custom-http-headers.md), [Custom URL Redirects](../features/url-redirects.md), [URL Rewrites](../features/url-rewrites.md), or [Virtual Hosting](../features/virtual-hosting.md)
+For example [Custom HTTP Headers](../features/custom-http-headers.md), [Custom URL Redirects](../features/url-redirects.md), [URL Rewrites](../features/url-rewrites.md), [Virtual Hosting](../features/virtual-hosting.md), or [In-Memory Cache](../features/memory-cache.md).
 
 ### Precedence
 
